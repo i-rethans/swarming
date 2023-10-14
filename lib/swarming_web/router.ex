@@ -15,9 +15,7 @@ defmodule SwarmingWeb.Router do
   end
 
   scope "/", SwarmingWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
+    pipe_through :api
   end
 
   # Other scopes may use custom stacks.

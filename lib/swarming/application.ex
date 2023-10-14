@@ -17,9 +17,10 @@ defmodule Swarming.Application do
       # Start Finch
       {Finch, name: Swarming.Finch},
       # Start the Endpoint (http/https)
-      SwarmingWeb.Endpoint
+      SwarmingWeb.Endpoint,
       # Start a worker by calling: Swarming.Worker.start_link(arg)
       # {Swarming.Worker, arg}
+      {Oban, Application.fetch_env!(:swarming, Oban)}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

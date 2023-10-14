@@ -13,6 +13,20 @@ defmodule SwarmingWeb.Endpoint do
 
   socket "/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]
 
+  socket "/socket", SwarmingWeb.UserSocket,
+    websocket: [
+      timeout: 45_000,
+      check_origin: {SwarmingWeb.Endpoint, :check_origin, []}
+    ],
+    longpoll: false
+
+  def check_origin(uri) do
+    [
+      ~r{^http://localhost:3000/?$}
+    ]
+    |> Enum.any?(fn regex -> Regex.match?(regex, uri |> URI.to_string()) end)
+  end
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # You should set gzip to true if you are running phx.digest
