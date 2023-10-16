@@ -16,13 +16,13 @@ defmodule SwarmingWeb.Endpoint do
   socket "/socket", SwarmingWeb.UserSocket,
     websocket: [
       timeout: 45_000
-      # check_origin: {SwarmingWeb.Endpoint, :check_origin, []}
+      check_origin: {SwarmingWeb.Endpoint, :check_origin, []}
     ],
     longpoll: false
 
   def check_origin(uri) do
     [
-      ~r{^http://localhost:3000/?$}
+      ~r{^http://.*:3000/?$}
     ]
     |> Enum.any?(fn regex -> Regex.match?(regex, uri |> URI.to_string()) end)
   end
