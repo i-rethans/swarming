@@ -7,6 +7,7 @@ defmodule Swarming.Repo.Migrations.CreateSessions do
       add :state, :string, null: false
       add :question, :string, null: true
       add :value, :float, null: false
+      add :swarming_time, :integer, null: false
 
       timestamps()
     end

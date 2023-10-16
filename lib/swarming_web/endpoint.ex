@@ -15,8 +15,8 @@ defmodule SwarmingWeb.Endpoint do
 
   socket "/socket", SwarmingWeb.UserSocket,
     websocket: [
-      timeout: 45_000,
-      check_origin: {SwarmingWeb.Endpoint, :check_origin, []}
+      timeout: 45_000
+      # check_origin: {SwarmingWeb.Endpoint, :check_origin, []}
     ],
     longpoll: false
 

@@ -8,6 +8,7 @@ defmodule Swarming.Sessions.Session do
     field :state, Ecto.Enum, values: ~w(started swarming finished)a
     field :question, :string
     field :value, :float
+    field :swarming_time, :integer
 
     has_many :participants, Swarming.Participants.Participant
 
@@ -17,14 +18,15 @@ defmodule Swarming.Sessions.Session do
   @doc false
   def create_changeset(session, attrs \\ %{}) do
     session
-    |> cast(attrs, [:id, :state, :question, :value])
+    |> cast(attrs, [:id, :state, :question, :value, :swarming_time])
     |> validate_required([:id, :state])
     |> put_change(:value, 0.0)
+    |> put_change(:swarming_time, 30000)
   end
 
   def changeset(session, attrs \\ %{}) do
     session
-    |> cast(attrs, [:id, :state, :question, :value])
+    |> cast(attrs, [:id, :state, :question, :value, :swarming_time])
     |> validate_required([:id, :state])
   end
 end

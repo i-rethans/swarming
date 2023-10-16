@@ -16,6 +16,7 @@ defmodule SwarmingWeb.SessionChannel do
     Session
     |> Repo.get(session_id)
     |> Repo.preload(:participants)
+    |> IO.inspect(label: "joining session")
     |> do_join(socket, participant_id)
   end
 
@@ -29,7 +30,12 @@ defmodule SwarmingWeb.SessionChannel do
       |> Repo.insert!()
 
     %Participant{}
-    |> Participant.changeset(%{id: participant_id, direction: :neutral, session_id: session.id})
+    |> Participant.changeset(%{
+      id: participant_id,
+      direction: :neutral,
+      session_id: session.id,
+      admin: false
+    })
     |> Repo.insert!()
     |> broadcast_new_participant(session.id)
 
@@ -60,7 +66,12 @@ defmodule SwarmingWeb.SessionChannel do
 
   defp get_or_insert(nil, participant_id, session_id) do
     %Participant{}
-    |> Participant.changeset(%{id: participant_id, direction: :neutral, session_id: session_id})
+    |> Participant.changeset(%{
+      id: participant_id,
+      direction: :neutral,
+      session_id: session_id,
+      admin: false
+    })
     |> Repo.insert!()
     |> broadcast_new_participant(session_id)
   end
@@ -84,13 +95,41 @@ defmodule SwarmingWeb.SessionChannel do
   end
 
   @impl true
-  def handle_in("set_question", %{"question" => question} = _payload, socket) do
+  def handle_in(
+        "set_question",
+        payload,
+        socket
+      ) do
+    Session
+    |> Repo.get!(socket.assigns.session_id)
+    |> check_question()
+    |> IO.inspect()
+    |> set_question_reply(payload, socket)
+  end
+
+  defp check_question(%Session{question: nil} = session), do: session
+
+  defp check_question(_session), do: nil
+
+  defp set_question_reply(nil, _payload, socket) do
+    {:reply, {:error, "question already set"}, socket}
+  end
+
+  defp set_question_reply(
+         session,
+         %{"question" => question, "participant_id" => participant_id} = _payload,
+         socket
+       ) do
     session =
-      Session
-      |> Repo.get!(socket.assigns.session_id)
+      session
       |> Session.changeset(%{question: question})
       |> Repo.update!()
       |> Serializer.get_session_state()
+
+    Participant
+    |> Repo.get!(participant_id)
+    |> Participant.changeset(%{admin: true})
+    |> Repo.update!()
 
     {:reply, {:ok, session}, socket}
   end

@@ -6,6 +6,8 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   alias Swarming.Repo
   alias Swarming.Sessions.Serializer
 
+  @tick_interval 250
+
   def start_link(%{session_id: _session_id} = state) do
     GenServer.start_link(__MODULE__, state)
   end
@@ -14,6 +16,7 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   def init(%{session_id: session_id} = _state) do
     # Schedule work to be performed on start
     schedule_tick(session_id)
+    start_timer(session_id)
 
     state = %{session_id: session_id, count: 1}
 
@@ -21,21 +24,60 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   end
 
   @impl true
-  def handle_info(:tick, %{count: count} = state) when count == 30 do
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info(:tick, %{session_id: session_id} = state) do
+  def handle_info(:tick, %{session_id: session_id} = _state) do
     # Do the desired work here
     # ...
 
     # Reschedule once more
     schedule_tick(session_id)
 
-    state = %{session_id: session_id, count: state.count + 1}
+    state = %{session_id: session_id}
 
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:quit, %{session_id: session_id} = state) do
+    session =
+      Session
+      |> Repo.get!(session_id)
+      |> Session.changeset(%{state: :finished})
+      |> Repo.update!()
+
+    Endpoint.broadcast(
+      "session:#{session_id}",
+      "stop",
+      session |> Serializer.get_session_state()
+    )
+
+    {:stop, :normal, state}
+  end
+
+  defp start_timer(session_id) do
+    session = Session |> Repo.get!(session_id) |> Repo.preload(:participants)
+
+    left =
+      session.participants
+      |> Enum.filter(fn p -> p.direction == :left end)
+      |> length()
+
+    right =
+      session.participants
+      |> Enum.filter(fn p -> p.direction == :right end)
+      |> length()
+
+    delta = get_delta(left, right)
+
+    value =
+      (session.value + delta)
+      |> check_lowerboud()
+      |> check_upperbound()
+
+    session
+    |> Session.changeset(%{value: value})
+    |> Repo.update!()
+
+    Process.send_after(self(), :quit, session.swarming_time)
   end
 
   defp schedule_tick(session_id) do
@@ -49,14 +91,14 @@ defmodule SwarmingWeb.SwarmingSessionServer do
     Endpoint.broadcast(
       "session:#{session_id}",
       "value_update",
-      session |> Serializer.get_session_state()
+      session |> Serializer.get_session_state() |> Map.put(:value, value)
     )
 
     session
-    |> Session.changeset(%{value: value})
+    |> Session.changeset(%{value: value, swarming_time: session.swarming_time - @tick_interval})
     |> Repo.update!()
 
-    Process.send_after(self(), :tick, 1000)
+    Process.send_after(self(), :tick, @tick_interval)
   end
 
   def get_delta(left, right) when left == 0 and right == 0, do: 0
@@ -67,8 +109,4 @@ defmodule SwarmingWeb.SwarmingSessionServer do
 
   defp check_lowerboud(value) when value < 0, do: 0
   defp check_lowerboud(value), do: value
-
-  def handle_info(:quit, state) do
-    {:stop, :normal, state}
-  end
 end

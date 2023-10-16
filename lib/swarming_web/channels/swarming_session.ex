@@ -5,18 +5,20 @@ defmodule SwarmingWeb.SwarmingSession do
   alias Swarming.Sessions.Session
   alias Swarming.Repo
 
+  @tick_interval 250
+
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"session_id" => session_id}}) do
-    schedule_tick(session_id, 0)
+    schedule_tick(session_id)
     :ok
   end
 
-  defp schedule_tick(_session_id, count) when count == 20 do
-    :ok
-  end
-
-  defp schedule_tick(session_id, count) do
-    session = Session |> Repo.get!(session_id) |> Repo.preload(:participants)
+  defp schedule_tick(session_id) do
+    session =
+      Session
+      |> Repo.get!(session_id)
+      |> Repo.preload(:participants)
+      |> IO.inspect(label: "session")
 
     left =
       session.participants
@@ -34,19 +36,27 @@ defmodule SwarmingWeb.SwarmingSession do
 
     value =
       (session.value + delta)
+      |> IO.inspect(label: " + delta")
       |> check_lowerboud()
       |> check_upperbound()
       |> IO.inspect(label: "value")
 
-    Endpoint.broadcast("session:#{session_id}", "value_update", %{value: value})
+    Endpoint.broadcast("session:#{session_id}", "value_update", %{
+      value: value,
+      swarming_time: session.swarming_time - @tick_interval
+    })
 
     session
-    |> Session.changeset(%{value: value})
+    |> Session.changeset(%{value: value, swarming_time: session.swarming_time - @tick_interval})
+    |> IO.inspect(label: "updated session")
     |> Repo.update!()
-    |> IO.inspect(label: "session")
 
-    :timer.sleep(500)
-    schedule_tick(session_id, count + 1)
+    :timer.sleep(@tick_interval)
+
+    case session.swarming_time - @tick_interval do
+      0 -> :ok
+      _ -> schedule_tick(session_id)
+    end
   end
 
   def get_delta(left, right) when left == 0 and right == 0, do: 0
