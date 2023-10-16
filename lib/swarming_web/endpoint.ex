@@ -22,7 +22,7 @@ defmodule SwarmingWeb.Endpoint do
 
   def check_origin(uri) do
     [
-      ~r{^http://.*:3000/?$}
+      ~r{^http://.*/?$}
     ]
     |> Enum.any?(fn regex -> Regex.match?(regex, uri |> URI.to_string()) end)
   end
