@@ -22,7 +22,9 @@ defmodule SwarmingWeb.Endpoint do
 
   def check_origin(uri) do
     [
-      ~r{^http://.*/?$}
+      ~r{^http://.*/?$},
+      ~r{^https://(www\.)?swarming-web\.firebaseapp\.com\/?$},
+      ~r{^http://localhost:3000/?$}
     ]
     |> Enum.any?(fn regex -> Regex.match?(regex, uri |> URI.to_string()) end)
   end
