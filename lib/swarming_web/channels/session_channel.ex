@@ -16,7 +16,6 @@ defmodule SwarmingWeb.SessionChannel do
     Session
     |> Repo.get(session_id)
     |> Repo.preload(:participants)
-    |> IO.inspect(label: "joining session")
     |> do_join(socket, participant_id)
   end
 
@@ -103,7 +102,6 @@ defmodule SwarmingWeb.SessionChannel do
     Session
     |> Repo.get!(socket.assigns.session_id)
     |> check_question()
-    |> IO.inspect()
     |> set_question_reply(payload, socket)
   end
 

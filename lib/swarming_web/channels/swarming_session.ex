@@ -18,28 +18,23 @@ defmodule SwarmingWeb.SwarmingSession do
       Session
       |> Repo.get!(session_id)
       |> Repo.preload(:participants)
-      |> IO.inspect(label: "session")
 
     left =
       session.participants
       |> Enum.filter(fn p -> p.direction == :left end)
       |> length()
-      |> IO.inspect(label: "left")
 
     right =
       session.participants
       |> Enum.filter(fn p -> p.direction == :right end)
       |> length()
-      |> IO.inspect(label: "right")
 
-    delta = get_delta(left, right) |> IO.inspect(label: "delta")
+    delta = get_delta(left, right)
 
     value =
       (session.value + delta)
-      |> IO.inspect(label: " + delta")
       |> check_lowerboud()
       |> check_upperbound()
-      |> IO.inspect(label: "value")
 
     Endpoint.broadcast("session:#{session_id}", "value_update", %{
       value: value,
@@ -48,7 +43,6 @@ defmodule SwarmingWeb.SwarmingSession do
 
     session
     |> Session.changeset(%{value: value, swarming_time: session.swarming_time - @tick_interval})
-    |> IO.inspect(label: "updated session")
     |> Repo.update!()
 
     :timer.sleep(@tick_interval)

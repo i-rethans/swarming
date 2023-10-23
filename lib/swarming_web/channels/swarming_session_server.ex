@@ -15,33 +15,38 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   @impl true
   def init(%{session_id: session_id} = _state) do
     # Schedule work to be performed on start
-    schedule_tick(session_id)
-    start_timer(session_id)
+    state = %{session_id: session_id, extreme_values: [], group_direction: :right}
 
-    state = %{session_id: session_id, count: 1}
+    state = schedule_tick(state)
+    start_timer(session_id)
 
     {:ok, state}
   end
 
   @impl true
-  def handle_info(:tick, %{session_id: session_id} = _state) do
+  def handle_info(:tick, state) do
     # Do the desired work here
     # ...
 
     # Reschedule once more
-    schedule_tick(session_id)
-
-    state = %{session_id: session_id}
+    state = schedule_tick(state)
 
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(:quit, %{session_id: session_id} = state) do
+  def handle_info(:quit, %{session_id: session_id, extreme_values: extreme_values} = state) do
+    sum =
+      extreme_values
+      |> Enum.sum()
+
+    average =
+      sum / length(extreme_values)
+
     session =
       Session
       |> Repo.get!(session_id)
-      |> Session.changeset(%{state: :finished})
+      |> Session.changeset(%{state: :finished, value: average})
       |> Repo.update!()
 
     Endpoint.broadcast(
@@ -54,39 +59,32 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   end
 
   defp start_timer(session_id) do
-    session = Session |> Repo.get!(session_id) |> Repo.preload(:participants)
-
-    left =
-      session.participants
-      |> Enum.filter(fn p -> p.direction == :left end)
-      |> length()
-
-    right =
-      session.participants
-      |> Enum.filter(fn p -> p.direction == :right end)
-      |> length()
-
-    delta = get_delta(left, right)
-
-    value =
-      (session.value + delta)
-      |> check_lowerboud()
-      |> check_upperbound()
-
-    session
-    |> Session.changeset(%{value: value})
-    |> Repo.update!()
-
+    session = Session |> Repo.get!(session_id)
     Process.send_after(self(), :quit, session.swarming_time)
   end
 
-  defp schedule_tick(session_id) do
+  defp schedule_tick(%{
+         session_id: session_id,
+         extreme_values: extreme_values,
+         group_direction: group_direction
+       }) do
     session = Session |> Repo.get!(session_id) |> Repo.preload(:participants)
     left = session.participants |> Enum.filter(fn p -> p.direction == :left end) |> length()
     right = session.participants |> Enum.filter(fn p -> p.direction == :right end) |> length()
 
-    delta = get_delta(left, right)
+    number_of_participants = session.participants |> length()
+
+    delta =
+      get_delta(left, right) *
+        (number_of_participants / (number_of_participants + 1))
+
     value = (session.value + delta) |> check_lowerboud() |> check_upperbound()
+
+    new_group_direction = get_group_direction(delta, group_direction)
+
+    extreme_values =
+      is_bound(new_group_direction, group_direction)
+      |> update_extreme_values(extreme_values, value)
 
     Endpoint.broadcast(
       "session:#{session_id}",
@@ -99,10 +97,50 @@ defmodule SwarmingWeb.SwarmingSessionServer do
     |> Repo.update!()
 
     Process.send_after(self(), :tick, @tick_interval)
+
+    %{
+      session_id: session_id,
+      extreme_values: extreme_values,
+      group_direction: new_group_direction
+    }
   end
 
-  def get_delta(left, right) when left == 0 and right == 0, do: 0
-  def get_delta(left, right), do: (right - left) / (right + left)
+  defp get_group_direction(delta, _group_direction) when delta > 0, do: :right
+  defp get_group_direction(delta, _group_direction) when delta < 0, do: :left
+  defp get_group_direction(_delta, _group_direction), do: :neutral
+
+  defp get_delta(left, right) when left == 0 and right == 0, do: 0
+  defp get_delta(left, right), do: (right - left) / (right + left)
+
+  defp is_bound(:neutral, _), do: true
+  defp is_bound(:right, :left), do: true
+  defp is_bound(:left, :right), do: true
+  defp is_bound(_new_group_direction, _current_group_direction), do: false
+
+  defp update_extreme_values(true, extreme_values, value) do
+    extreme_values = [value | extreme_values |> Enum.take(5)]
+
+    check_convergence(extreme_values) |> stop_if_converged()
+
+    extreme_values
+  end
+
+  defp update_extreme_values(false, extreme_values, _value), do: extreme_values
+
+  defp check_convergence(extreme_values) when length(extreme_values) == 6 do
+    differences =
+      Enum.reduce(extreme_values, {[], hd(extreme_values)}, fn x, {acc, previous_x} ->
+        {[abs(x - previous_x) | acc], x}
+      end)
+      |> elem(0)
+
+    Enum.all?(differences, fn x -> abs(x) <= 1 end)
+  end
+
+  defp check_convergence(_extreme_values), do: false
+
+  defp stop_if_converged(true), do: Process.send(self(), :quit, [])
+  defp stop_if_converged(false), do: nil
 
   defp check_upperbound(value) when value > 20, do: 20
   defp check_upperbound(value), do: value
