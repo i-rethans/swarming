@@ -83,7 +83,7 @@ defmodule SwarmingWeb.SwarmingSessionServer do
     new_group_direction = get_group_direction(delta, group_direction)
 
     extreme_values =
-      is_bound(new_group_direction, group_direction)
+      is_bound(new_group_direction, group_direction, session.swarming_time)
       |> update_extreme_values(extreme_values, value)
 
     Endpoint.broadcast(
@@ -112,13 +112,14 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   defp get_delta(left, right) when left == 0 and right == 0, do: 0
   defp get_delta(left, right), do: (right - left) / (right + left)
 
-  defp is_bound(:neutral, _), do: true
-  defp is_bound(:right, :left), do: true
-  defp is_bound(:left, :right), do: true
-  defp is_bound(_new_group_direction, _current_group_direction), do: false
+  defp is_bound(_, _, time) when time >= 25000, do: false
+  defp is_bound(:neutral, _, _time), do: true
+  defp is_bound(:right, :left, _time), do: true
+  defp is_bound(:left, :right, _time), do: true
+  defp is_bound(_new_group_direction, _current_group_direction, _time), do: false
 
   defp update_extreme_values(true, extreme_values, value) do
-    extreme_values = [value | extreme_values |> Enum.take(5)]
+    extreme_values = [value | extreme_values |> Enum.take(6)]
 
     check_convergence(extreme_values) |> stop_if_converged()
 
@@ -127,7 +128,7 @@ defmodule SwarmingWeb.SwarmingSessionServer do
 
   defp update_extreme_values(false, extreme_values, _value), do: extreme_values
 
-  defp check_convergence(extreme_values) when length(extreme_values) == 6 do
+  defp check_convergence(extreme_values) when length(extreme_values) == 7 do
     differences =
       Enum.reduce(extreme_values, {[], hd(extreme_values)}, fn x, {acc, previous_x} ->
         {[abs(x - previous_x) | acc], x}
