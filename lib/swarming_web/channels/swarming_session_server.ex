@@ -119,26 +119,49 @@ defmodule SwarmingWeb.SwarmingSessionServer do
   defp is_bound(_new_group_direction, _current_group_direction, _time), do: false
 
   defp update_extreme_values(true, extreme_values, value) do
-    extreme_values = [value | extreme_values |> Enum.take(6)]
+    extreme_values = [value | extreme_values |> Enum.take(16)]
 
-    check_convergence(extreme_values) |> stop_if_converged()
-
-    extreme_values
-  end
-
-  defp update_extreme_values(false, extreme_values, _value), do: extreme_values
-
-  defp check_convergence(extreme_values) when length(extreme_values) == 7 do
     differences =
       Enum.reduce(extreme_values, {[], hd(extreme_values)}, fn x, {acc, previous_x} ->
         {[abs(x - previous_x) | acc], x}
       end)
       |> elem(0)
 
-    Enum.all?(differences, fn x -> abs(x) <= 1 end)
+    check_convergence(differences) |> stop_if_converged()
+
+    reset_extreme_values(differences) |> do_reset(extreme_values)
+  end
+
+  defp update_extreme_values(false, extreme_values, _value), do: extreme_values
+
+  defp check_convergence(differences) when length(differences) >= 6 do
+    within_one(differences) or all_zero(differences)
   end
 
   defp check_convergence(_extreme_values), do: false
+
+  defp within_one(differences) do
+    differences = Enum.take(differences, 6)
+
+    Enum.all?(differences, fn x -> abs(x) <= 1 end) and
+      not Enum.all?(differences, fn x -> abs(x) == 0 end)
+  end
+
+  defp all_zero(differences) when length(differences) == 16 do
+    Enum.all?(differences, fn x -> abs(x) == 0 end)
+  end
+
+  defp all_zero(_differences), do: false
+
+  defp reset_extreme_values([]), do: false
+  defp reset_extreme_values(list) when length(list) == 1, do: false
+
+  defp reset_extreme_values([head | tail]) do
+    Enum.all?(tail, fn x -> abs(x) == 0 end) && head != 0
+  end
+
+  defp do_reset(true, _extreme_values), do: []
+  defp do_reset(false, extreme_values), do: extreme_values
 
   defp stop_if_converged(true), do: Process.send(self(), :quit, [])
   defp stop_if_converged(false), do: nil
